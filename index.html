@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>團購點餐統計</title>
+<style>
+  :root{
+    --bg:#f6f4ef; --card:#fff; --ink:#2b2a27; --muted:#7a766d; --line:#e6e1d6;
+    --accent:#d9682b; --accent-soft:#fbe9dd; --ok:#2f8a57; --ok-soft:#e1f2e8; --bad:#c0392b;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:16px}
+  header{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;padding:12px 16px 0}
+  header h1{margin:0 0 10px;font-size:18px;font-weight:700;letter-spacing:.5px}
+  header h1 small{font-weight:400;opacity:.65;font-size:12px;margin-left:6px}
+  nav{display:flex;gap:4px}
+  nav button{flex:1;background:none;border:0;color:#fff;opacity:.6;padding:10px 0;font-size:15px;border-bottom:3px solid transparent;cursor:pointer}
+  nav button.on{opacity:1;border-bottom-color:var(--accent);font-weight:700}
+  main{max-width:760px;margin:0 auto;padding:16px 14px 120px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 10px;font-size:16px}
+  .muted{color:var(--muted);font-size:13px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  label.f{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input,select,textarea{font:inherit;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  textarea{min-height:110px;resize:vertical}
+  .btn{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--accent);color:#fff;font-weight:600}
+  .btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line);font-weight:500}
+  .btn.ok{background:var(--ok)} .btn.bad{background:var(--bad)}
+  .btn.sm{padding:6px 10px;font-size:13px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .banner{border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;background:var(--accent-soft)}
+  .banner b{font-size:18px}
+  .banner.closed{background:#eee;color:var(--muted)}
+  .pill{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--ok-soft);color:var(--ok);font-weight:600}
+  .pill.closed{background:#eee;color:var(--muted)}
+  .cat{font-size:13px;color:var(--muted);margin:16px 2px 8px;font-weight:700;letter-spacing:1px}
+  .menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+  .item:hover{border-color:var(--accent)}
+  .item .n{font-weight:600;line-height:1.35}
+  .item .p{color:var(--accent);font-size:14px;margin-top:6px;font-variant-numeric:tabular-nums}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font:inherit;font-size:14px;border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 13px;cursor:pointer;color:var(--ink)}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  /* bottom sheet */
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:50;display:none;align-items:flex-end;justify-content:center}
+  .mask.show{display:flex}
+  .sheet{background:#fff;width:100%;max-width:560px;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
+  .sheet h3{margin:0 0 2px;font-size:19px}
+  .sheet .sec{margin-top:14px}
+  .sheet .sec>div:first-child{font-size:13px;color:var(--muted);margin-bottom:6px}
+  .qty{display:flex;align-items:center;gap:12px}
+  .qty button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:20px;cursor:pointer}
+  .qty span{min-width:24px;text-align:center;font-weight:700;font-size:18px}
+  /* cart bar */
+  .cartbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:none}
+  .cartbar.show{display:block}
+  .cartbar .inner{max-width:760px;margin:0 auto}
+  .cartlist{max-height:40vh;overflow:auto;margin-bottom:8px}
+  .line{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .line:last-child{border-bottom:0}
+  .line .d{font-size:13px;color:var(--muted)}
+  .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  td.r,th.r{text-align:right}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px;text-align:center}
+  .kpi .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:12px;color:var(--muted)}
+  .kpi.main .v{color:var(--accent)}
+  .paid td{color:var(--muted)}
+  .toast{position:fixed;left:50%;top:80px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:99px;z-index:99;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .itemtable input{padding:6px 8px;font-size:14px}
+  .itemtable td{padding:4px 3px;border:0}
+  .hidden{display:none!important}
+  .mode{font-size:12px;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.15)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🧋 團購點餐統計 <small id="modeTag" class="mode"></small></h1>
+  <nav>
+    <button data-tab="order" class="on">點餐</button>
+    <button data-tab="stats">統計</button>
+    <button data-tab="admin">後台</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ========== 點餐 ========== -->
+  <section id="tab-order">
+    <div id="roundBanner"></div>
+    <div class="card" id="nameCard">
+      <label class="f" style="margin-top:0">你的名字</label>
+      <input id="myName" placeholder="例如：Ann" maxlength="20">
+    </div>
+    <div id="menuArea"></div>
+    <div id="myOrders"></div>
+  </section>
+
+  <!-- ========== 統計 ========== -->
+  <section id="tab-stats" class="hidden">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div id="statsTitle" style="font-weight:700"></div>
+      <div class="row">
+        <button class="btn ghost sm" id="btnRefresh">↻ 重新整理</button>
+        <button class="btn sm" id="btnCopy">複製訂單文字</button>
+      </div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="v" id="kPeople">0</div><div class="l">訂購人數</div></div>
+      <div class="kpi"><div class="v" id="kQty">0</div><div class="l">總杯數／份數</div></div>
+      <div class="kpi main"><div class="v" id="kTotal">$0</div><div class="l">總金額</div></div>
+    </div>
+    <div class="card">
+      <h2>品項彙總 <span class="muted">（給店家用）</span></h2>
+      <div id="sumByItem"></div>
+    </div>
+    <div class="card">
+      <h2>每人金額</h2>
+      <div id="sumByPerson"></div>
+    </div>
+  </section>
+
+  <!-- ========== 後台 ========== -->
+  <section id="tab-admin" class="hidden">
+    <div class="card" id="loginCard">
+      <h2>管理者登入</h2>
+      <input type="password" id="pw" placeholder="管理密碼">
+      <div style="margin-top:10px"><button class="btn" id="btnLogin">登入</button></div>
+    </div>
+
+    <div id="adminArea" class="hidden">
+      <div class="card">
+        <h2>① 開團</h2>
+        <label class="f">選擇店家</label>
+        <select id="roundStore"></select>
+        <label class="f">團名（可留空）</label>
+        <input id="roundTitle" placeholder="例如：週三下午茶">
+        <label class="f">截止時間（可留空）</label>
+        <input type="datetime-local" id="roundDeadline">
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="btnNewRound">開新團（會清空目前的訂單）</button>
+          <button class="btn ghost" id="btnUpdateRound">只更新團名／截止時間</button>
+          <button class="btn ghost" id="btnToggleOpen"></button>
+        </div>
+        <p class="muted" id="roundInfo"></p>
+      </div>
+
+      <div class="card">
+        <h2>② 店家菜單</h2>
+        <div class="row">
+          <select id="storeSel" style="flex:1"></select>
+          <button class="btn ghost sm" id="btnAddStore">＋ 新增店家</button>
+        </div>
+        <div id="storeEditor"></div>
+      </div>
+
+      <div class="card">
+        <h2>③ 備份</h2>
+        <p class="muted">匯出所有店家菜單成檔案，換電腦或重設時可匯入。</p>
+        <div class="row">
+          <button class="btn ghost" id="btnExport">匯出菜單 JSON</button>
+          <label class="btn ghost" style="display:inline-block">匯入菜單 JSON<input type="file" id="fileImport" accept=".json" class="hidden"></label>
+        </div>
+      </div>
+
+      <div style="position:sticky;bottom:12px;text-align:right">
+        <button class="btn ok" id="btnSaveCfg" style="box-shadow:0 4px 14px rgba(0,0,0,.15)">💾 儲存菜單設定</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 選品項彈窗 -->
+<div class="mask" id="mask"><div class="sheet" id="sheet"></div></div>
+
+<!-- 購物車 -->
+<div class="cartbar" id="cartbar"><div class="inner">
+  <div class="cartlist" id="cartlist"></div>
+  <div class="row" style="justify-content:space-between">
+    <div><b id="cartCount">0</b> 項　合計 <b class="num" id="cartTotal" style="color:var(--accent);font-size:18px">$0</b></div>
+    <button class="btn" id="btnSubmit">送出訂單</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   設定：貼上 Google Apps Script 網址就能多人共用
+   留空 = 單機模式（資料只存在這台電腦的瀏覽器）
+   ========================================================= */
+const API_URL = '';
+
+/* ---------- 預設選項 ---------- */
+const DEF_SUGAR = ['正常糖','少糖','半糖','微糖','一分糖','無糖'];
+const DEF_ICE   = ['正常冰','少冰','微冰','去冰','完全去冰','溫','熱'];
+const DEF_RICE  = ['正常飯','半飯','無飯'];
+
+const SAMPLE_CONFIG = {
+  stores:[
+    {id:'s1',name:'範例飲料店',type:'drink',sugar:DEF_SUGAR,ice:DEF_ICE,rice:DEF_RICE,items:[
+      {id:'i1',cat:'茶類',name:'紅茶',price:30,priceL:35},
+      {id:'i2',cat:'茶類',name:'綠茶',price:30,priceL:35},
+      {id:'i3',cat:'奶茶',name:'珍珠奶茶',price:50,priceL:60},
+      {id:'i4',cat:'奶茶',name:'鮮奶茶',price:55,priceL:65}]},
+    {id:'s2',name:'範例便當店',type:'meal',sugar:DEF_SUGAR,ice:DEF_ICE,rice:DEF_RICE,items:[
+      {id:'i5',cat:'便當',name:'排骨便當',price:100},
+      {id:'i6',cat:'便當',name:'雞腿便當',price:110},
+      {id:'i7',cat:'便當',name:'素食便當',price:90}]}
+  ],
+  round:{id:'r'+Date.now(),storeId:'s1',title:'',deadline:'',open:true}
+};
+
+/* ---------- 狀態 ---------- */
+let config = null, orders = [], cart = [], adminPw = sessionStorage.getItem('adminPw') || '';
+let isAdmin = false, editStoreId = null, timer = null;
+const LS = {cfg:'od_cfg', orders:'od_orders', name:'od_name', mine:'od_mine'};
+
+/* ---------- 工具 ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const money = n => '$' + Number(n||0).toLocaleString();
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1800)}
+const lsGet = (k,d) => { try{ return JSON.parse(localStorage.getItem(k)) ?? d }catch(e){ return d } };
+const lsSet = (k,v) => { try{ localStorage.setItem(k, JSON.stringify(v)) }catch(e){} };
+
+/* ---------- 資料存取（遠端或單機） ---------- */
+const remote = !!API_URL;
+async function apiLoad(){
+  if(!remote){
+    config = lsGet(LS.cfg, null) || JSON.parse(JSON.stringify(SAMPLE_CONFIG));
+    const all = lsGet(LS.orders, []);
+    orders = all.filter(o => o.roundId === config.round.id);
+    return;
+  }
+  const r = await fetch(API_URL + '?t=' + Date.now());
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error || '讀取失敗');
+  config = j.config || JSON.parse(JSON.stringify(SAMPLE_CONFIG));
+  orders = j.orders || [];
+}
+async function apiPost(action, data){
+  if(!remote) return localPost(action, data);
+  const r = await fetch(API_URL, {method:'POST', body: JSON.stringify({action, pw: adminPw, ...data})});
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error || '操作失敗');
+  return j;
+}
+function localPost(action, d){
+  let all = lsGet(LS.orders, []);
+  if(action==='checkPw') return {ok:true};
+  if(action==='saveConfig'){ lsSet(LS.cfg, d.config); return {ok:true}; }
+  if(action==='addOrder'){ all.push(d.order); lsSet(LS.orders, all); return {ok:true}; }
+  if(action==='deleteOrder'){ lsSet(LS.orders, all.filter(o=>o.id!==d.id)); return {ok:true}; }
+  if(action==='setPaid'){ all.forEach(o=>{ if(o.id===d.id) o.paid=d.paid }); lsSet(LS.orders, all); return {ok:true}; }
+  if(action==='clearOld'){ lsSet(LS.orders, all.filter(o=>o.roundId===d.keepRoundId)); return {ok:true}; }
+  return {ok:false};
+}
+
+/* ---------- 共用計算 ---------- */
+const curStore = () => config.stores.find(s => s.id === config.round.storeId);
+function roundOpen(){
+  if(!config.round.open) return false;
+  if(config.round.deadline && new Date() > new Date(config.round.deadline)) return false;
+  return true;
+}
+function optText(it){
+  return [it.size, it.sugar, it.ice, it.rice].filter(Boolean).join(' ') + (it.note ? `（${it.note}）` : '');
+}
+function fmtDeadline(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+/* =========================================================
+   點餐頁
+   ========================================================= */
+function renderOrder(){
+  const st = curStore(), open = roundOpen();
+  const b = $('#roundBanner');
+  if(!st){ b.innerHTML = `<div class="banner closed">目前沒有開團，請管理者到「後台」開團。</div>`; $('#menuArea').innerHTML=''; $('#nameCard').classList.add('hidden'); renderMine(); return; }
+  $('#nameCard').classList.toggle('hidden', !open);
+  b.innerHTML = `<div class="banner ${open?'':'closed'}">
+      <div class="row" style="justify-content:space-between">
+        <b>${esc(st.name)}</b>
+        <span class="pill ${open?'':'closed'}">${open?'點餐中':'已結單'}</span>
+      </div>
+      <div class="muted" style="margin-top:4px">${esc(config.round.title||'')}${config.round.deadline?'　截止 '+fmtDeadline(config.round.deadline):''}　目前 ${new Set(orders.map(o=>o.name)).size} 人已點</div>
+    </div>`;
+  // 菜單（依分類）
+  const groups = {};
+  st.items.forEach(it => { (groups[it.cat||'菜單'] ||= []).push(it) });
+  let h = '';
+  for(const [cat, list] of Object.entries(groups)){
+    h += `<div class="cat">${esc(cat)}</div><div class="menu">`;
+    list.forEach(it => {
+      const p = it.priceL ? `中 ${money(it.price)}／大 ${money(it.priceL)}` : money(it.price);
+      h += `<button class="item" ${open?'':'disabled'} data-item="${esc(it.id)}"><div class="n">${esc(it.name)}</div><div class="p">${p}</div></button>`;
+    });
+    h += `</div>`;
+  }
+  $('#menuArea').innerHTML = h || '<p class="muted">這間店還沒有品項。</p>';
+  $('#menuArea').querySelectorAll('[data-item]').forEach(el => el.onclick = () => openSheet(el.dataset.item));
+  renderMine();
+}
+
+/* 選項彈窗 */
+function openSheet(itemId){
+  const st = curStore(), it = st.items.find(x=>x.id===itemId);
+  const sel = {size: it.priceL ? '中杯' : '', sugar: '', ice: '', rice: '', note:'', qty:1};
+  if(st.type==='drink'){ sel.sugar = (st.sugar||[])[0]||''; sel.ice = (st.ice||[])[0]||''; }
+  if(st.type==='meal'){ sel.rice = (st.rice||[])[0]||''; }
+  const chipRow = (key, opts) => `<div class="chips" data-key="${key}">${opts.map(o=>`<button class="chip ${sel[key]===o?'on':''}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+  const price = () => (sel.size==='大杯' ? it.priceL : it.price) * sel.qty;
+  const s = $('#sheet');
+  s.innerHTML = `
+    <h3>${esc(it.name)}</h3>
+    <div class="muted">${it.priceL?`中杯 ${money(it.price)}／大杯 ${money(it.priceL)}`:money(it.price)}</div>
+    ${it.priceL?`<div class="sec"><div>尺寸</div>${chipRow('size',['中杯','大杯'])}</div>`:''}
+    ${st.type==='drink' && st.sugar?.length?`<div class="sec"><div>甜度</div>${chipRow('sugar',st.sugar)}</div>`:''}
+    ${st.type==='drink' && st.ice?.length?`<div class="sec"><div>冰塊</div>${chipRow('ice',st.ice)}</div>`:''}
+    ${st.type==='meal' && st.rice?.length?`<div class="sec"><div>飯量</div>${chipRow('rice',st.rice)}</div>`:''}
+    <div class="sec"><div>備註（自由輸入，例如：不要香菜、加珍珠、飯換菜）</div><input id="selNote" maxlength="60" placeholder="可留空"></div>
+    <div class="sec row" style="justify-content:space-between">
+      <div class="qty"><button id="qm">−</button><span id="qv">1</span><button id="qp">＋</button></div>
+      <button class="btn" id="addCart">加入　<span id="selPrice" class="num">${money(price())}</span></button>
+    </div>
+    <div style="text-align:center;margin-top:10px"><button class="btn ghost sm" id="closeSheet">取消</button></div>`;
+  s.querySelectorAll('.chips').forEach(row => row.onclick = e => {
+    const b = e.target.closest('.chip'); if(!b) return;
+    sel[row.dataset.key] = b.dataset.v;
+    row.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c===b));
+    $('#selPrice').textContent = money(price());
+  });
+  $('#qm').onclick = () => { sel.qty = Math.max(1, sel.qty-1); $('#qv').textContent = sel.qty; $('#selPrice').textContent = money(price()); };
+  $('#qp').onclick = () => { sel.qty = Math.min(20, sel.qty+1); $('#qv').textContent = sel.qty; $('#selPrice').textContent = money(price()); };
+  $('#closeSheet').onclick = closeSheet;
+  $('#addCart').onclick = () => {
+    sel.note = $('#selNote').value.trim();
+    const unit = sel.size==='大杯' ? Number(it.priceL) : Number(it.price);
+    cart.push({itemId:it.id, name:it.name, size:sel.size, sugar:sel.sugar, ice:sel.ice, rice:sel.rice, note:sel.note, qty:sel.qty, price:unit});
+    closeSheet(); renderCart(); toast('已加入');
+  };
+  $('#mask').classList.add('show');
+}
+function closeSheet(){ $('#mask').classList.remove('show') }
+$('#mask').onclick = e => { if(e.target.id==='mask') closeSheet() };
+
+function renderCart(){
+  const bar = $('#cartbar');
+  if(!cart.length || $('#tab-order').classList.contains('hidden')){ bar.classList.remove('show'); return; }
+  bar.classList.add('show');
+  $('#cartlist').innerHTML = cart.map((c,i)=>`
+    <div class="line"><div><div>${esc(c.name)} × ${c.qty}</div><div class="d">${esc(optText(c))}</div></div>
+    <div class="row"><span class="num">${money(c.price*c.qty)}</span><button class="btn ghost sm" data-rm="${i}">刪</button></div></div>`).join('');
+  $('#cartlist').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { cart.splice(+b.dataset.rm,1); renderCart(); });
+  $('#cartCount').textContent = cart.reduce((a,c)=>a+c.qty,0);
+  $('#cartTotal').textContent = money(cart.reduce((a,c)=>a+c.price*c.qty,0));
+}
+
+$('#btnSubmit').onclick = async () => {
+  const name = $('#myName').value.trim();
+  if(!name){ toast('請先填名字'); $('#myName').focus(); window.scrollTo({top:0,behavior:'smooth'}); return; }
+  if(!roundOpen()){ toast('已經結單了'); return; }
+  const order = {id:uid('o'), roundId:config.round.id, time:new Date().toISOString(), name,
+    items:cart, total:cart.reduce((a,c)=>a+c.price*c.qty,0), paid:false, token:uid('t')};
+  const btn = $('#btnSubmit'); btn.disabled = true; btn.textContent = '送出中…';
+  try{
+    await apiPost('addOrder', {order});
+    const mine = lsGet(LS.mine, {}); mine[order.id] = order.token; lsSet(LS.mine, mine);
+    lsSet(LS.name, name);
+    cart = []; renderCart(); toast('訂單已送出 ✓');
+    await refresh();
+  }catch(e){ toast('送出失敗：'+e.message) }
+  btn.disabled = false; btn.textContent = '送出訂單';
+};
+
+function renderMine(){
+  const mine = lsGet(LS.mine, {});
+  const list = orders.filter(o => mine[o.id]);
+  if(!list.length){ $('#myOrders').innerHTML=''; return; }
+  const open = roundOpen();
+  $('#myOrders').innerHTML = `<div class="card" style="margin-top:16px"><h2>我在這台裝置送出的訂單</h2>` +
+    list.map(o=>`<div class="line"><div><b>${esc(o.name)}</b>
+      ${o.items.map(c=>`<div class="d">${esc(c.name)} × ${c.qty}　${esc(optText(c))}</div>`).join('')}</div>
+      <div class="row"><span class="num">${money(o.total)}</span>${open?`<button class="btn ghost sm" data-del="${o.id}">取消</button>`:''}</div></div>`).join('') + `</div>`;
+  $('#myOrders').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if(!confirm('確定取消這筆訂單？')) return;
+    try{ await apiPost('deleteOrder', {id:b.dataset.del, token: mine[b.dataset.del]}); toast('已取消'); await refresh(); }
+    catch(e){ toast(e.message) }
+  });
+}
+
+/* =========================================================
+   統計頁
+   ========================================================= */
+function renderStats(){
+  const st = curStore();
+  $('#statsTitle').textContent = st ? `${st.name}${config.round.title?'｜'+config.round.title:''}` : '尚未開團';
+  const people = new Set(orders.map(o=>o.name));
+  let qty = 0, total = 0;
+  const byItem = new Map();
+  orders.forEach(o => o.items.forEach(c => {
+    qty += c.qty; total += c.price*c.qty;
+    const key = [c.name, optText(c)].join('|');
+    const g = byItem.get(key) || {name:c.name, opt:optText(c), qty:0, amt:0, who:[]};
+    g.qty += c.qty; g.amt += c.price*c.qty; g.who.push(o.name + (c.qty>1?`×${c.qty}`:''));
+    byItem.set(key, g);
+  }));
+  $('#kPeople').textContent = people.size;
+  $('#kQty').textContent = qty;
+  $('#kTotal').textContent = money(total);
+
+  const rows = [...byItem.values()].sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')||a.opt.localeCompare(b.opt,'zh-Hant'));
+  $('#sumByItem').innerHTML = rows.length ? `<table><tr><th>品項</th><th>選項／備註</th><th class="r">數量</th><th class="r">小計</th></tr>` +
+    rows.map(g=>`<tr><td><b>${esc(g.name)}</b><div class="muted">${esc(g.who.join('、'))}</div></td><td>${esc(g.opt)||'—'}</td><td class="r num">${g.qty}</td><td class="r num">${money(g.amt)}</td></tr>`).join('') +
+    `<tr><td colspan="2"><b>合計</b></td><td class="r num"><b>${qty}</b></td><td class="r num"><b>${money(total)}</b></td></tr></table>` : '<p class="muted">還沒有人點。</p>';
+
+  // 依人合併
+  const byP = new Map();
+  orders.forEach(o => {
+    const g = byP.get(o.name) || {name:o.name, items:[], amt:0, ids:[], paid:true};
+    g.items.push(...o.items); g.amt += o.total; g.ids.push(o.id); if(!o.paid) g.paid = false;
+    byP.set(o.name, g);
+  });
+  const ps = [...byP.values()];
+  const paidAmt = ps.filter(p=>p.paid).reduce((a,p)=>a+p.amt,0);
+  $('#sumByPerson').innerHTML = ps.length ? `<table><tr><th>姓名</th><th>內容</th><th class="r">金額</th><th class="r">${isAdmin?'收款':''}</th></tr>` +
+    ps.map(p=>`<tr class="${p.paid?'paid':''}"><td><b>${esc(p.name)}</b></td>
+      <td>${p.items.map(c=>`${esc(c.name)}${c.qty>1?'×'+c.qty:''} <span class="muted">${esc(optText(c))}</span>`).join('<br>')}</td>
+      <td class="r num"><b>${money(p.amt)}</b></td>
+      <td class="r">${isAdmin?`<button class="btn sm ${p.paid?'ghost':'ok'}" data-paid="${p.ids.join(',')}" data-v="${p.paid?0:1}">${p.paid?'已收 ✓':'收款'}</button>
+        <button class="btn ghost sm" data-delp="${p.ids.join(',')}" title="刪除">✕</button>`:(p.paid?'<span class="pill">已付</span>':'')}</td></tr>`).join('') +
+    `</table><p class="muted" style="margin-bottom:0">已收 ${money(paidAmt)}／未收 ${money(total-paidAmt)}</p>` : '<p class="muted">還沒有人點。</p>';
+
+  $('#sumByPerson').querySelectorAll('[data-paid]').forEach(b => b.onclick = async () => {
+    try{ for(const id of b.dataset.paid.split(',')) await apiPost('setPaid',{id, paid: b.dataset.v==='1'}); await refresh(); }
+    catch(e){ toast(e.message) }
+  });
+  $('#sumByPerson').querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
+    if(!confirm('刪除這個人的全部訂單？')) return;
+    try{ for(const id of b.dataset.delp.split(',')) await apiPost('deleteOrder',{id}); toast('已刪除'); await refresh(); }
+    catch(e){ toast(e.message) }
+  });
+}
+
+$('#btnRefresh').onclick = () => refresh().then(()=>toast('已更新'));
+$('#btnCopy').onclick = () => {
+  const st = curStore(); if(!st) return;
+  const map = new Map(); let qty=0, total=0;
+  orders.forEach(o=>o.items.forEach(c=>{ const k=c.name+(optText(c)?' '+optText(c):''); map.set(k,(map.get(k)||0)+c.qty); qty+=c.qty; total+=c.price*c.qty; }));
+  const byP = new Map(); orders.forEach(o=>byP.set(o.name,(byP.get(o.name)||0)+o.total));
+  let t = `【${st.name}】${config.round.title||''}\n`;
+  [...map].forEach(([k,n])=> t += `${k} ×${n}\n`);
+  t += `共 ${qty} 份，總金額 ${money(total)}\n\n各人金額：\n`;
+  [...byP].forEach(([n,a])=> t += `${n} ${money(a)}\n`);
+  navigator.clipboard.writeText(t).then(()=>toast('已複製，可貼到 LINE'), ()=>{ prompt('請手動複製：', t) });
+};
+
+/* =========================================================
+   後台
+   ========================================================= */
+async function tryLogin(pw){
+  if(!remote){ isAdmin = true; return true; }
+  adminPw = pw;
+  try{ await apiPost('checkPw',{}); isAdmin = true; sessionStorage.setItem('adminPw', pw); return true; }
+  catch(e){ isAdmin = false; adminPw=''; sessionStorage.removeItem('adminPw'); return false; }
+}
+$('#btnLogin').onclick = async () => {
+  if(await tryLogin($('#pw').value)){ toast('登入成功'); renderAdmin(); } else toast('密碼錯誤');
+};
+
+function renderAdmin(){
+  $('#loginCard').classList.toggle('hidden', isAdmin);
+  $('#adminArea').classList.toggle('hidden', !isAdmin);
+  if(!isAdmin) return;
+  const opts = config.stores.map(s=>`<option value="${s.id}">${esc(s.name)}（${s.type==='drink'?'飲料':'餐點'}）</option>`).join('');
+  $('#roundStore').innerHTML = opts; $('#roundStore').value = config.round.storeId;
+  $('#roundTitle').value = config.round.title || '';
+  $('#roundDeadline').value = config.round.deadline ? toLocalInput(config.round.deadline) : '';
+  $('#btnToggleOpen').textContent = config.round.open ? '手動結單' : '重新開放點餐';
+  const st = curStore();
+  $('#roundInfo').textContent = st ? `目前：${st.name}｜${roundOpen()?'點餐中':'已結單'}｜${orders.length} 筆訂單` : '目前沒有開團';
+  $('#storeSel').innerHTML = opts;
+  if(!config.stores.find(s=>s.id===editStoreId)) editStoreId = config.stores[0]?.id;
+  $('#storeSel').value = editStoreId || '';
+  renderStoreEditor();
+}
+function toLocalInput(iso){ const d=new Date(iso); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
+$('#storeSel').onchange = e => { editStoreId = e.target.value; renderStoreEditor(); };
+
+function renderStoreEditor(){
+  const s = config.stores.find(x=>x.id===editStoreId);
+  if(!s){ $('#storeEditor').innerHTML = '<p class="muted">還沒有店家，按「新增店家」。</p>'; return; }
+  $('#storeEditor').innerHTML = `
+    <label class="f">店名</label><input id="eName" value="${esc(s.name)}">
+    <label class="f">類型</label>
+    <select id="eType"><option value="drink">飲料（選甜度、冰塊）</option><option value="meal">餐點（選飯量）</option></select>
+    <div id="eDrinkOpts">
+      <label class="f">甜度選項（用逗號分隔）</label><input id="eSugar" value="${esc((s.sugar||[]).join(','))}">
+      <label class="f">冰塊選項（用逗號分隔）</label><input id="eIce" value="${esc((s.ice||[]).join(','))}">
+    </div>
+    <div id="eMealOpts">
+      <label class="f">飯量選項（用逗號分隔）</label><input id="eRice" value="${esc((s.rice||[]).join(','))}">
+    </div>
+    <label class="f">品項 <span class="muted">（大杯價留空 = 只有一種價格）</span></label>
+    <table class="itemtable"><tr><th>分類</th><th>品名</th><th>價格</th><th>大杯價</th><th></th></tr>
+      ${s.items.map((it,i)=>`<tr data-i="${i}">
+        <td style="width:22%"><input data-f="cat" value="${esc(it.cat||'')}"></td>
+        <td><input data-f="name" value="${esc(it.name)}"></td>
+        <td style="width:16%"><input data-f="price" type="number" inputmode="numeric" value="${it.price??''}"></td>
+        <td style="width:16%"><input data-f="priceL" type="number" inputmode="numeric" value="${it.priceL??''}"></td>
+        <td style="width:40px"><button class="btn ghost sm" data-rmi="${i}">✕</button></td></tr>`).join('')}
+    </table>
+    <button class="btn ghost sm" id="btnAddItem" style="margin-top:6px">＋ 新增一個品項</button>
+    <label class="f" style="margin-top:16px">快速貼上菜單（一行一個；# 開頭是分類）</label>
+    <textarea id="eBulk" placeholder="# 茶類&#10;紅茶 30 35&#10;綠茶,30,35&#10;# 便當&#10;排骨便當 100"></textarea>
+    <div class="row" style="margin-top:6px">
+      <button class="btn ghost sm" id="btnBulkAdd">加到菜單後面</button>
+      <button class="btn ghost sm" id="btnBulkReplace">取代整份菜單</button>
+      <span style="flex:1"></span>
+      <button class="btn bad sm" id="btnDelStore">刪除這間店</button>
+    </div>`;
+  $('#eType').value = s.type;
+  const syncType = () => { $('#eDrinkOpts').classList.toggle('hidden', s.type!=='drink'); $('#eMealOpts').classList.toggle('hidden', s.type!=='meal'); };
+  syncType();
+  $('#eName').oninput = e => s.name = e.target.value;
+  $('#eType').onchange = e => { s.type = e.target.value; syncType(); };
+  const splitOpts = v => v.split(/[,，、]/).map(x=>x.trim()).filter(Boolean);
+  $('#eSugar').oninput = e => s.sugar = splitOpts(e.target.value);
+  $('#eIce').oninput = e => s.ice = splitOpts(e.target.value);
+  $('#eRice').oninput = e => s.rice = splitOpts(e.target.value);
+  $('#storeEditor').querySelectorAll('tr[data-i] input').forEach(inp => inp.oninput = () => {
+    const it = s.items[+inp.closest('tr').dataset.i], f = inp.dataset.f;
+    it[f] = (f==='price'||f==='priceL') ? (inp.value===''? null : Number(inp.value)) : inp.value;
+  });
+  $('#storeEditor').querySelectorAll('[data-rmi]').forEach(b => b.onclick = () => { s.items.splice(+b.dataset.rmi,1); renderStoreEditor(); });
+  $('#btnAddItem').onclick = () => { const last=s.items[s.items.length-1]; s.items.push({id:uid('i'),cat:last?.cat||'',name:'',price:null,priceL:null}); renderStoreEditor(); };
+  const parse = txt => { let cat=''; const out=[];
+    txt.split('\n').forEach(l => { l=l.trim(); if(!l) return;
+      if(l.startsWith('#')){ cat=l.replace(/^#+/,'').trim(); return; }
+      const m = l.match(/^(.+?)[\s,，\t]+\$?(\d+)(?:[\s,，\/\t]+\$?(\d+))?\s*$/);
+      if(m) out.push({id:uid('i'),cat,name:m[1].trim(),price:+m[2],priceL:m[3]?+m[3]:null});
+      else out.push({id:uid('i'),cat,name:l,price:0,priceL:null});
+    }); return out; };
+  $('#btnBulkAdd').onclick = () => { s.items.push(...parse($('#eBulk').value)); renderStoreEditor(); toast('已加入，記得按儲存'); };
+  $('#btnBulkReplace').onclick = () => { if(!confirm('確定取代整份菜單？')) return; s.items = parse($('#eBulk').value); renderStoreEditor(); toast('已取代，記得按儲存'); };
+  $('#btnDelStore').onclick = () => {
+    if(s.id===config.round.storeId){ toast('這間店正在開團，不能刪'); return; }
+    if(!confirm(`刪除「${s.name}」？`)) return;
+    config.stores = config.stores.filter(x=>x.id!==s.id); editStoreId=null; renderAdmin(); toast('已刪除，記得按儲存');
+  };
+}
+
+$('#btnAddStore').onclick = () => {
+  const name = prompt('店名？'); if(!name) return;
+  const type = confirm('這間是「飲料店」嗎？\n按「確定」= 飲料（甜度冰塊）\n按「取消」= 餐點（飯量）') ? 'drink' : 'meal';
+  const s = {id:uid('s'), name, type, sugar:[...DEF_SUGAR], ice:[...DEF_ICE], rice:[...DEF_RICE], items:[]};
+  config.stores.push(s); editStoreId = s.id; renderAdmin();
+};
+
+function cleanConfig(){
+  config.stores.forEach(s => { s.items = s.items.filter(it => it.name && it.name.trim()); s.items.forEach(it=>{ it.price = Number(it.price)||0; if(!it.priceL) it.priceL=null; }); });
+}
+async function saveConfig(msg){
+  cleanConfig();
+  try{ await apiPost('saveConfig', {config}); toast(msg||'已儲存 ✓'); await refresh(); }
+  catch(e){ toast('儲存失敗：'+e.message) }
+}
+$('#btnSaveCfg').onclick = () => saveConfig();
+
+function deadlineVal(){ const v=$('#roundDeadline').value; return v ? new Date(v).toISOString() : ''; }
+$('#btnNewRound').onclick = async () => {
+  if(orders.length && !confirm(`目前有 ${orders.length} 筆訂單，開新團後就看不到了。確定？`)) return;
+  const newId = uid('r');
+  config.round = {id:newId, storeId:$('#roundStore').value, title:$('#roundTitle').value.trim(), deadline:deadlineVal(), open:true};
+  await saveConfig('已開新團 ✓');
+  if(!remote) localPost('clearOld',{keepRoundId:newId});
+};
+$('#btnUpdateRound').onclick = () => {
+  config.round.title = $('#roundTitle').value.trim(); config.round.deadline = deadlineVal();
+  saveConfig('已更新');
+};
+$('#btnToggleOpen').onclick = () => { config.round.open = !config.round.open; saveConfig(config.round.open?'已重新開放':'已結單'); };
+
+$('#btnExport').onclick = () => {
+  const blob = new Blob([JSON.stringify({stores:config.stores},null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '菜單備份.json'; a.click();
+};
+$('#fileImport').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try{ const j = JSON.parse(await f.text()); if(!Array.isArray(j.stores)) throw 0;
+    config.stores = j.stores; editStoreId=null; renderAdmin(); toast('已匯入，記得按儲存'); }
+  catch(_){ toast('檔案格式不對') }
+  e.target.value='';
+};
+
+/* =========================================================
+   切換分頁 & 啟動
+   ========================================================= */
+let curTab = 'order';
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  curTab = b.dataset.tab;
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on', x===b));
+  ['order','stats','admin'].forEach(t => $('#tab-'+t).classList.toggle('hidden', t!==curTab));
+  renderAll(); window.scrollTo(0,0);
+});
+function renderAll(){
+  if(curTab==='order') renderOrder();
+  if(curTab==='stats') renderStats();
+  if(curTab==='admin') renderAdmin();
+  renderCart();
+}
+async function refresh(){
+  try{ await apiLoad(); }catch(e){ toast('連線失敗：'+e.message); return; }
+  // 後台正在編輯菜單時，不要用伺服器資料蓋掉
+  renderAll();
+}
+
+(async function init(){
+  $('#modeTag').textContent = remote ? '多人共用' : '單機模式';
+  $('#myName').value = lsGet(LS.name,'') || '';
+  $('#myName').onchange = e => lsSet(LS.name, e.target.value.trim());
+  if(!remote) isAdmin = true;
+  else if(adminPw) await tryLogin(adminPw);
+  await refresh();
+  // 統計頁每 20 秒自動更新
+  timer = setInterval(() => { if(curTab==='stats' || curTab==='order') refresh(); }, 20000);
+})();
+</script>
+</body>
+</html>
