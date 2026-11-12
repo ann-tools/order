@@ -152,6 +152,15 @@
   .manual{display:block;width:100%;margin:18px 0 6px;padding:16px;border:2px dashed var(--tea);border-radius:var(--radius);background:var(--accent-soft);color:var(--brown);font:inherit;font-size:15px;cursor:pointer}
   .manual b{font-weight:700}
   .ocrmsg{background:var(--accent-soft);color:var(--brown);border-radius:12px;padding:10px 12px;font-size:14px;margin-bottom:8px}
+  .rtabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding:2px}
+  .rtab{flex:none;font-family:var(--round);font-size:16px;border:2px solid var(--line);background:var(--card);color:var(--brown);border-radius:16px;padding:9px 16px;cursor:pointer;text-align:left;box-shadow:var(--shadow)}
+  .rtab small{display:block;font-family:-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;font-size:11px;color:var(--muted)}
+  .rtab.on{background:var(--brown);color:#fff8ee;border-color:var(--brown)} .rtab.on small{color:#e6cdb2}
+  .rtab.closed{opacity:.6}
+  .rbox{border:2px solid var(--line);border-radius:16px;padding:12px 14px;margin-top:10px;background:#fff}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:99px;background:var(--accent-soft);color:var(--brown);vertical-align:1px}
+  .cartbar .tag{background:rgba(255,248,238,.18);color:#fff8ee}
+  .manualrow{padding:14px 16px;margin-top:14px}
 </style>
 </head>
 <body>
@@ -168,6 +177,7 @@
 <main>
   <!-- ========== 點餐 ========== -->
   <section id="tab-order">
+    <div id="roundTabs"></div>
     <div id="roundBanner"></div>
     <div id="photoArea"></div>
     <div class="card" id="nameCard">
@@ -175,11 +185,19 @@
       <input id="myName" placeholder="例如：Ann" maxlength="20">
     </div>
     <div id="itemsArea"></div>
+    <div class="card manualrow hidden" id="manualRow">
+      <div class="row" style="align-items:flex-end;flex-wrap:nowrap">
+        <div style="flex:2;min-width:0"><label class="f" style="margin-top:0">品名</label><input id="mName" maxlength="30" placeholder="例如：珍珠奶茶"></div>
+        <div style="flex:1;min-width:0"><label class="f" style="margin-top:0">價格</label><input id="mPrice" type="number" inputmode="numeric" placeholder="$"></div>
+        <button class="btn" id="mGo" style="flex:none">加入</button>
+      </div>
+    </div>
     <div id="myOrders"></div>
   </section>
 
   <!-- ========== 統計 ========== -->
   <section id="tab-stats" class="hidden">
+    <div id="statsTabs"></div>
     <div class="row" style="justify-content:space-between;margin-bottom:12px">
       <div id="statsTitle" style="font-weight:700"></div>
       <div class="row">
@@ -200,6 +218,7 @@
       <h2>每人金額</h2>
       <div id="sumByPerson"></div>
     </div>
+    <div id="sumAll"></div>
   </section>
 
   <!-- ========== 後台 ========== -->
@@ -257,7 +276,7 @@ const DEF_RICE  = ['正常飯','半飯','無飯'];
 const newStore = (name, type) => ({id:uid('s'), name, type, photos:[], items:[], sugar:[...DEF_SUGAR], ice:[...DEF_ICE], rice:[...DEF_RICE]});
 
 /* ---------- 狀態 ---------- */
-let config = null, orders = [], cart = [], adminPw = sessionStorage.getItem('adminPw') || '';
+let config = null, orders = [], allOrders = [], cart = [], curRoundId = sessionStorage.getItem('curRound') || '', adminPw = sessionStorage.getItem('adminPw') || '';
 let isAdmin = false, curTab = 'order';
 const LS = {cfg:'od_cfg2', orders:'od_orders', name:'od_name', mine:'od_mine'};
 
@@ -272,18 +291,36 @@ const lsSet = (k,v) => { try{ localStorage.setItem(k, JSON.stringify(v)); return
 
 /* ---------- 資料存取（遠端或單機） ---------- */
 const remote = !!API_URL;
-const emptyConfig = () => ({stores:[], round:{id:'', storeId:'', title:'', deadline:'', open:false}});
+const emptyConfig = () => ({stores:[], rounds:[]});
+/* 舊版只有一團（config.round），自動轉成可以多團（config.rounds） */
+function normalize(cfg){
+  cfg = cfg || emptyConfig();
+  if(!Array.isArray(cfg.rounds)) cfg.rounds = cfg.round && cfg.round.id ? [cfg.round] : [];
+  delete cfg.round;
+  cfg.stores = cfg.stores || [];
+  return cfg;
+}
 async function apiLoad(){
   if(!remote){
-    config = lsGet(LS.cfg, null) || emptyConfig();
-    orders = lsGet(LS.orders, []).filter(o => o.roundId && o.roundId === config.round.id);
-    return;
+    config = normalize(lsGet(LS.cfg, null));
+    const ids = new Set(config.rounds.map(r=>r.id));
+    allOrders = lsGet(LS.orders, []).filter(o => ids.has(o.roundId));
+  } else {
+    const r = await fetch(API_URL + '?t=' + Date.now());
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || '讀取失敗');
+    config = normalize(j.config);
+    allOrders = j.orders || [];
   }
-  const r = await fetch(API_URL + '?t=' + Date.now());
-  const j = await r.json();
-  if(!j.ok) throw new Error(j.error || '讀取失敗');
-  config = j.config || emptyConfig();
-  orders = j.orders || [];
+  selectRound();
+}
+/* 決定目前看哪一團 */
+function selectRound(id){
+  if(id) curRoundId = id;
+  const rs = config.rounds;
+  if(!rs.find(r=>r.id===curRoundId)) curRoundId = (rs.find(isOpen) || rs[0] || {}).id || '';
+  sessionStorage.setItem('curRound', curRoundId);
+  orders = allOrders.filter(o => o.roundId === curRoundId);
 }
 async function apiPost(action, data){
   if(!remote) return localPost(action, data);
@@ -300,16 +337,31 @@ function localPost(action, d){
   if(action==='addOrder'){ all.push(d.order); lsSet(LS.orders, all); return {ok:true}; }
   if(action==='deleteOrder'){ lsSet(LS.orders, all.filter(o=>o.id!==d.id)); return {ok:true}; }
   if(action==='setPaid'){ all.forEach(o=>{ if(o.id===d.id) o.paid=d.paid }); lsSet(LS.orders, all); return {ok:true}; }
-  if(action==='clearOld'){ lsSet(LS.orders, all.filter(o=>o.roundId===d.keepRoundId)); return {ok:true}; }
+  if(action==='clearRound'){ lsSet(LS.orders, all.filter(o=>o.roundId!==d.roundId)); return {ok:true}; }
   return {ok:false};
 }
 
 /* ---------- 共用 ---------- */
-const curStore = () => config.stores.find(s => s.id === config.round.storeId);
-function roundOpen(){
-  if(!config.round.id || !config.round.open || !curStore()) return false;
-  if(config.round.deadline && new Date() > new Date(config.round.deadline)) return false;
+const NO_ROUND = {id:'', storeId:'', title:'', deadline:'', open:false};
+const R = () => config.rounds.find(r => r.id === curRoundId) || NO_ROUND;      // 目前選的這團
+const storeOf = r => config.stores.find(s => s.id === r.storeId);
+const curStore = () => storeOf(R());
+function isOpen(r){
+  if(!r || !r.id || !r.open || !storeOf(r)) return false;
+  if(r.deadline && new Date() > new Date(r.deadline)) return false;
   return true;
+}
+const roundOpen = () => isOpen(R());
+const roundLabel = r => { const s = storeOf(r); return s ? `${s.type==='drink'?'🧋':'🍱'} ${s.name}` : '（店家已刪除）'; };
+/* 有兩團以上時，在點餐頁／統計頁上方顯示切換按鈕 */
+function renderRoundTabs(el){
+  const rs = config.rounds;
+  if(rs.length < 2){ el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="rtabs">${rs.map(r => {
+      const n = new Set(allOrders.filter(o=>o.roundId===r.id).map(o=>o.name)).size;
+      return `<button class="rtab ${r.id===curRoundId?'on':''} ${isOpen(r)?'':'closed'}" data-r="${r.id}">${esc(roundLabel(r))}<small>${isOpen(r)?n+' 人':'已結單'}</small></button>`;
+    }).join('')}</div>`;
+  el.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { selectRound(b.dataset.r); renderAll(); });
 }
 function optText(it){
   return [it.size, it.sugar, it.ice, it.rice].filter(Boolean).join(' ') + (it.note ? `（${it.note}）` : '');
@@ -384,9 +436,10 @@ let photoKey = '';
 function renderOrder(){
   const st = curStore(), open = roundOpen();
   const b = $('#roundBanner');
-  if(!st || !config.round.id){
+  renderRoundTabs($('#roundTabs'));
+  if(!st || !R().id){
     b.innerHTML = `<div class="shop closed"><div class="awning"></div><div class="in"><b>還沒開團</b><div class="muted">請管理者到「後台」選一間店開團 🙏</div></div></div>`;
-    $('#photoArea').innerHTML = ''; photoKey = ''; $('#itemsArea').innerHTML = '';
+    $('#photoArea').innerHTML = ''; photoKey = ''; $('#itemsArea').innerHTML = ''; $('#manualRow').classList.add('hidden');
     $('#nameCard').classList.add('hidden'); renderMine(); return;
   }
   const cnt = new Set(orders.map(o=>o.name)).size;
@@ -395,7 +448,7 @@ function renderOrder(){
         <b>${st.type==='drink'?'🧋':'🍱'} ${esc(st.name)}</b>
         <span class="pill ${open?'':'closed'}">${open?'● 點餐中':'已結單'}</span>
       </div>
-      <div class="muted" style="margin-top:6px">${[esc(config.round.title||''), config.round.deadline?'⏰ '+fmtDeadline(config.round.deadline)+' 截止':'', `已經有 ${cnt} 人點了`].filter(Boolean).join('　·　')}</div>
+      <div class="muted" style="margin-top:6px">${[esc(R().title||''), R().deadline?'⏰ '+fmtDeadline(R().deadline)+' 截止':'', `已經有 ${cnt} 人點了`].filter(Boolean).join('　·　')}</div>
     </div></div>`;
 
   // 菜單照片（有變才重畫，避免閃爍）
@@ -432,11 +485,11 @@ function renderOrder(){
   let h = '';
   if(items.length) h += `<div class="cat">點選品項</div><div class="menu">${items.map(card).join('')}</div>`;
   if(extra.size)  h += `<div class="cat">大家還點了</div><div class="menu">${[...extra.values()].map(card).join('')}</div>`;
-  if(open) h += `<button class="manual" id="btnManual">✏️ 菜單上找不到？<b>自己輸入品名和價格</b></button>`;
   $('#itemsArea').innerHTML = h;
   const all = [...items, ...extra.values()];
   $('#itemsArea').querySelectorAll('[data-item]').forEach(el => el.onclick = () => openSheet(all.find(i=>i.id===el.dataset.item)));
-  if($('#btnManual')) $('#btnManual').onclick = () => openSheet(null);
+  $('#manualRow').classList.toggle('hidden', !open);
+  $('#mName').placeholder = st.type==='drink' ? '例如：珍珠奶茶' : '例如：排骨便當';
   renderMine();
 }
 
@@ -450,7 +503,8 @@ function openSheet(it){
     sel.sugar = (st.sugar||[])[0]||''; sel.ice = (st.ice||[])[0]||'';
   } else sel.rice = (st.rice||[])[0]||'';
   const hasTwo = it && it.price && it.priceL;
-  const unit = () => manual ? (Number($('#mPrice').value)||0) : (sel.size==='大杯' && it.priceL ? it.priceL : (it.price || it.priceL));
+  const typed = it && it.manual;   // 從「品名／價格」欄位打的
+  const unit = () => manual ? (Number($('#sxPrice').value)||0) : (sel.size==='大杯' && it.priceL ? it.priceL : (it.price || it.priceL));
   const chipRow = (key, opts, label) => !opts || !opts.length ? '' :
     `<div class="sec"><div>${label}</div><div class="chips" data-key="${key}">${opts.map(o=>`<button class="chip ${sel[key]===o?'on':''}" data-v="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>`;
   const s = $('#sheet');
@@ -460,9 +514,9 @@ function openSheet(it){
                : `<h3>${esc(it.name)}</h3><div class="muted">${hasTwo?`中杯 ${money(it.price)}／大杯 ${money(it.priceL)}`:money(it.price||it.priceL)}</div>`}
     </div></div>
     ${manual ? `<div class="row" style="align-items:flex-end">
-        <div style="flex:2;min-width:140px"><label class="f">品名</label><input id="mName" maxlength="30" placeholder="${st.type==='drink'?'例如：珍珠奶茶':'例如：排骨便當'}"></div>
-        <div style="flex:1;min-width:80px"><label class="f">單價</label><input id="mPrice" type="number" inputmode="numeric" placeholder="$"></div></div>` : ''}
-    ${st.type==='drink' && (manual || hasTwo) ? chipRow('size', ['中杯','大杯'], '尺寸') : ''}
+        <div style="flex:2;min-width:140px"><label class="f">品名</label><input id="sxName" maxlength="30" placeholder="${st.type==='drink'?'例如：珍珠奶茶':'例如：排骨便當'}"></div>
+        <div style="flex:1;min-width:80px"><label class="f">單價</label><input id="sxPrice" type="number" inputmode="numeric" placeholder="$"></div></div>` : ''}
+    ${st.type==='drink' && (manual || hasTwo || typed) ? chipRow('size', ['中杯','大杯'], '尺寸') : ''}
     ${st.type==='drink' ? chipRow('sugar', st.sugar, '甜度') + chipRow('ice', st.ice, '冰塊') : chipRow('rice', st.rice, '飯量')}
     <div class="sec"><div>備註 <span class="muted">（可留空，例如：加珍珠、不要香菜）</span></div><input id="selNote" maxlength="60"></div>
     <div class="sec row" style="justify-content:space-between">
@@ -479,24 +533,25 @@ function openSheet(it){
     upd();
   });
   if(manual){
-    $('#mPrice').oninput = upd;
-    $('#mName').oninput = () => { $('#sIcon').innerHTML = iconSVG($('#mName').value, st.type); };
+    $('#sxPrice').oninput = upd;
+    $('#sxName').oninput = () => { $('#sIcon').innerHTML = iconSVG($('#sxName').value, st.type); };
   }
   $('#qm').onclick = () => { sel.qty = Math.max(1, sel.qty-1); $('#qv').textContent = sel.qty; upd(); };
   $('#qp').onclick = () => { sel.qty = Math.min(20, sel.qty+1); $('#qv').textContent = sel.qty; upd(); };
   $('#closeSheet').onclick = closeSheet;
   $('#addCart').onclick = () => {
-    const name = manual ? $('#mName').value.trim() : it.name;
+    const name = manual ? $('#sxName').value.trim() : it.name;
     const price = unit();
-    if(!name){ toast('請填品名'); $('#mName').focus(); return; }
-    if(!(price > 0)){ toast('請填價格（看菜單照片）'); $('#mPrice').focus(); return; }
+    if(!name){ toast('請填品名'); $('#sxName').focus(); return; }
+    if(!(price > 0)){ toast('請填價格（看菜單照片）'); $('#sxPrice').focus(); return; }
     // 沒有大杯／中杯之分的品項，不記尺寸
-    const size = st.type==='drink' && (manual || hasTwo) ? sel.size : '';
-    cart.push({name, price, size, sugar:sel.sugar, ice:sel.ice, rice:sel.rice, note:$('#selNote').value.trim(), qty:sel.qty});
+    const size = st.type==='drink' && (manual || hasTwo || typed) ? sel.size : '';
+    if(typed){ $('#mName').value = ''; $('#mPrice').value = ''; }
+    cart.push({roundId:curRoundId, name, price, size, sugar:sel.sugar, ice:sel.ice, rice:sel.rice, note:$('#selNote').value.trim(), qty:sel.qty});
     closeSheet(); renderCart(); toast('已加入，可以繼續點或按「送出訂單」');
   };
   $('#mask').classList.add('show');
-  if(manual) setTimeout(()=>$('#mName').focus(), 250);
+  if(manual) setTimeout(()=>$('#sxName').focus(), 250);
 }
 
 /* =========================================================
@@ -561,8 +616,9 @@ function renderCart(){
   const bar = $('#cartbar');
   if(!cart.length || curTab!=='order'){ bar.classList.remove('show'); return; }
   bar.classList.add('show');
+  const multi = new Set(cart.map(c=>c.roundId)).size > 1;
   $('#cartlist').innerHTML = cart.map((c,i)=>`
-    <div class="line"><div><div>${esc(c.name)} × ${c.qty}</div><div class="d">${esc(optText(c))}</div></div>
+    <div class="line"><div><div>${multi?`<span class="tag">${esc(roundLabel(config.rounds.find(r=>r.id===c.roundId)||{}))}</span> `:''}${esc(c.name)} × ${c.qty}</div><div class="d">${esc(optText(c))}</div></div>
     <div class="row"><span class="num">${money(c.price*c.qty)}</span><button class="btn ghost sm" data-rm="${i}">刪</button></div></div>`).join('');
   $('#cartlist').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { cart.splice(+b.dataset.rm,1); renderCart(); });
   $('#cartCount').textContent = cart.reduce((a,c)=>a+c.qty,0);
@@ -572,35 +628,51 @@ function renderCart(){
 $('#btnSubmit').onclick = async () => {
   const name = $('#myName').value.trim();
   if(!name){ toast('請先填你的名字'); $('#myName').focus(); $('#myName').scrollIntoView({behavior:'smooth',block:'center'}); return; }
-  if(!roundOpen()){ toast('已經結單了'); return; }
-  const order = {id:uid('o'), roundId:config.round.id, time:new Date().toISOString(), name,
-    items:cart, total:cart.reduce((a,c)=>a+c.price*c.qty,0), paid:false, token:uid('t')};
+  const groups = new Map();
+  cart.forEach(c => { if(!groups.has(c.roundId)) groups.set(c.roundId, []); groups.get(c.roundId).push(c); });
+  for(const rid of groups.keys()){
+    const r = config.rounds.find(x=>x.id===rid);
+    if(!isOpen(r)){ toast(`「${r?roundLabel(r):'這團'}」已經結單了，請把它從購物車刪掉`, 3000); return; }
+  }
   const btn = $('#btnSubmit'); btn.disabled = true; btn.textContent = '送出中…';
   try{
-    await apiPost('addOrder', {order});
-    const mine = lsGet(LS.mine, {}); mine[order.id] = order.token; lsSet(LS.mine, mine);
+    for(const [rid, items] of groups){
+      const order = {id:uid('o'), roundId:rid, time:new Date().toISOString(), name,
+        items:items.map(({roundId, ...c}) => c), total:items.reduce((a,c)=>a+c.price*c.qty,0), paid:false, token:uid('t')};
+      await apiPost('addOrder', {order});
+      const mine = lsGet(LS.mine, {}); mine[order.id] = order.token; lsSet(LS.mine, mine);
+      cart = cart.filter(c => c.roundId !== rid);
+    }
     lsSet(LS.name, name);
-    cart = []; renderCart(); toast('訂單已送出 ✓');
+    renderCart(); toast('訂單已送出 ✓');
     await refresh();
-  }catch(e){ toast('送出失敗：'+e.message) }
+  }catch(e){ toast('送出失敗：'+e.message, 3000); renderCart(); }
   btn.disabled = false; btn.textContent = '送出訂單';
 };
 
 function renderMine(){
   const mine = lsGet(LS.mine, {});
-  const list = orders.filter(o => mine[o.id]);
+  const list = allOrders.filter(o => mine[o.id]);
   if(!list.length){ $('#myOrders').innerHTML=''; return; }
-  const open = roundOpen();
+  const rOf = o => config.rounds.find(r=>r.id===o.roundId);
   $('#myOrders').innerHTML = `<div class="card"><h2>✅ 我已送出的訂單</h2>` +
-    list.map(o=>`<div class="line"><div><b>${esc(o.name)}</b>
+    list.map(o=>{ const open = isOpen(rOf(o)); return `<div class="line"><div><b>${esc(o.name)}</b> <span class="tag">${esc(roundLabel(rOf(o)||{}))}</span>
       ${o.items.map(c=>`<div class="d">${esc(c.name)} × ${c.qty}　${esc(optText(c))}</div>`).join('')}</div>
-      <div class="row"><span class="num">${money(o.total)}</span>${open?`<button class="btn ghost sm" data-del="${o.id}">取消</button>`:''}</div></div>`).join('') + `</div>`;
+      <div class="row"><span class="num">${money(o.total)}</span>${open?`<button class="btn ghost sm" data-del="${o.id}">取消</button>`:''}</div></div>`; }).join('') + `</div>`;
   $('#myOrders').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     if(!confirm('確定取消這筆訂單？')) return;
     try{ await apiPost('deleteOrder', {id:b.dataset.del, token: mine[b.dataset.del]}); toast('已取消'); await refresh(); }
     catch(e){ toast(e.message) }
   });
 }
+
+$('#mGo').onclick = () => {
+  const name = $('#mName').value.trim(), price = Number($('#mPrice').value);
+  if(!name){ toast('請填品名'); $('#mName').focus(); return; }
+  if(!(price > 0)){ toast('請填價格'); $('#mPrice').focus(); return; }
+  openSheet({id:'m', name, price, priceL:null, manual:true});
+};
+$('#mPrice').onkeydown = e => { if(e.key==='Enter') $('#mGo').click(); };
 
 /* 看大圖 */
 function openViewer(src){
@@ -622,7 +694,8 @@ $('#vClose').onclick = () => { $('#viewer').classList.add('hidden'); document.bo
    ========================================================= */
 function renderStats(){
   const st = curStore();
-  $('#statsTitle').textContent = st ? `${st.name}${config.round.title?'｜'+config.round.title:''}` : '尚未開團';
+  renderRoundTabs($('#statsTabs'));
+  $('#statsTitle').textContent = st ? `${st.name}${R().title?'｜'+R().title:''}` : '尚未開團';
   const people = new Set(orders.map(o=>o.name));
   let qty = 0, total = 0;
   const byItem = new Map();
@@ -659,6 +732,19 @@ function renderStats(){
         <button class="btn ghost sm" data-delp="${p.ids.join(',')}" title="刪除">✕</button>`:(p.paid?'<span class="pill">已付</span>':'')}</td></tr>`).join('') +
     `</table><p class="muted" style="margin-bottom:0">已收 ${money(paidAmt)}／未收 ${money(total-paidAmt)}</p>` : '<p class="muted">還沒有人點。</p>';
 
+  // 同時好幾團時：每人全部加起來要付多少
+  const allBox = $('#sumAll');
+  if(config.rounds.length > 1 && allOrders.length){
+    const m = new Map();
+    allOrders.forEach(o => { const g = m.get(o.name) || {amt:0, parts:{}}; g.amt += o.total;
+      const lb = roundLabel(config.rounds.find(r=>r.id===o.roundId)||{}); g.parts[lb] = (g.parts[lb]||0) + o.total; m.set(o.name, g); });
+    const grand = [...m.values()].reduce((a,g)=>a+g.amt,0);
+    allBox.innerHTML = `<div class="card"><h2>所有團合計 <span class="muted">（每人總共要付）</span></h2><table>
+      <tr><th>姓名</th><th>明細</th><th class="r">合計</th></tr>
+      ${[...m].map(([n,g])=>`<tr><td><b>${esc(n)}</b></td><td class="muted">${Object.entries(g.parts).map(([k,v])=>`${esc(k)} ${money(v)}`).join('<br>')}</td><td class="r num"><b>${money(g.amt)}</b></td></tr>`).join('')}
+      <tr><td colspan="2"><b>全部總金額</b></td><td class="r num"><b>${money(grand)}</b></td></tr></table></div>`;
+  } else allBox.innerHTML = '';
+
   $('#sumByPerson').querySelectorAll('[data-paid]').forEach(b => b.onclick = async () => {
     try{ for(const id of b.dataset.paid.split(',')) await apiPost('setPaid',{id, paid: b.dataset.v==='1'}); await refresh(); }
     catch(e){ toast(e.message) }
@@ -676,7 +762,7 @@ $('#btnCopy').onclick = () => {
   const map = new Map(); let qty=0, total=0;
   orders.forEach(o=>o.items.forEach(c=>{ const k=c.name+(optText(c)?' '+optText(c):''); map.set(k,(map.get(k)||0)+c.qty); qty+=c.qty; total+=c.price*c.qty; }));
   const byP = new Map(); orders.forEach(o=>byP.set(o.name,(byP.get(o.name)||0)+o.total));
-  let t = `【${st.name}】${config.round.title||''}\n`;
+  let t = `【${st.name}】${R().title||''}\n`;
   [...map].forEach(([k,n])=> t += `${k} ×${n}\n`);
   t += `共 ${qty} 份，總金額 ${money(total)}\n\n各人金額：\n`;
   [...byP].forEach(([n,a])=> t += `${n} ${money(a)}\n`);
@@ -706,35 +792,46 @@ function renderAdmin(){
   $('#loginCard').classList.toggle('hidden', isAdmin);
   $('#adminArea').classList.toggle('hidden', !isAdmin);
   if(!isAdmin) return;
-  const st = curStore(), r = config.round;
+  const rs = config.rounds;
 
-  // 目前開團
-  if(st && r.id){
-    const open = roundOpen();
-    $('#roundCard').innerHTML = `
-      <h2>目前開團：${st.type==='drink'?'🧋':'🍱'} ${esc(st.name)} <span class="pill ${open?'':'closed'}">${open?'點餐中':'已結單'}</span></h2>
-      <div class="muted">已有 ${new Set(orders.map(o=>o.name)).size} 人、${orders.length} 筆訂單</div>
-      <div class="row" style="align-items:flex-end">
-        <div style="flex:1;min-width:150px"><label class="f">團名（可留空）</label><input id="rTitle" value="${esc(r.title||'')}" placeholder="例如：週三下午茶"></div>
-        <div style="flex:1;min-width:150px"><label class="f">截止時間（可留空）</label><input type="datetime-local" id="rDeadline" value="${r.deadline?toLocalInput(r.deadline):''}"></div>
+  // 進行中的團（可以同時好幾團，例如便當＋飲料）
+  $('#roundCard').innerHTML = rs.length ? `<h2>進行中的團 <span class="muted">（可同時開好幾團）</span></h2>` + rs.map(r => {
+    const open = isOpen(r), os = allOrders.filter(o=>o.roundId===r.id);
+    return `<div class="rbox" data-rid="${r.id}">
+      <div class="row" style="justify-content:space-between">
+        <b class="sname">${esc(roundLabel(r))}</b>
+        <span class="pill ${open?'':'closed'}">${open?'點餐中':'已結單'}</span>
       </div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn ghost sm" id="rSave">更新團名／時間</button>
-        <button class="btn sm ${r.open?'bad':'ok'}" id="rToggle">${r.open?'結單（不再收單）':'重新開放點餐'}</button>
-      </div>`;
-    $('#rSave').onclick = () => {
-      config.round.title = $('#rTitle').value.trim();
-      const v = $('#rDeadline').value; config.round.deadline = v ? new Date(v).toISOString() : '';
+      <div class="muted">已有 ${new Set(os.map(o=>o.name)).size} 人、${os.length} 筆訂單</div>
+      <div class="row" style="align-items:flex-end">
+        <div style="flex:1;min-width:140px"><label class="f">團名（可留空）</label><input data-f="title" value="${esc(r.title||'')}" placeholder="例如：週三下午茶"></div>
+        <div style="flex:1;min-width:140px"><label class="f">截止時間（可留空）</label><input data-f="deadline" type="datetime-local" value="${r.deadline?toLocalInput(r.deadline):''}"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost sm" data-act="save">更新團名／時間</button>
+        <button class="btn sm ${r.open?'bad':'ok'}" data-act="toggle">${r.open?'結單（不再收單）':'重新開放點餐'}</button>
+        <button class="btn ghost sm" data-act="end">🗑 結束這團</button>
+      </div></div>`;
+  }).join('') : `<h2>目前沒有開團</h2><div class="muted">在下面選店家，按「開團」。便當和飲料可以同時各開一團。</div>`;
+  $('#roundCard').querySelectorAll('.rbox').forEach(box => {
+    const r = rs.find(x=>x.id===box.dataset.rid);
+    box.querySelector('[data-act=save]').onclick = () => {
+      r.title = box.querySelector('[data-f=title]').value.trim();
+      const v = box.querySelector('[data-f=deadline]').value; r.deadline = v ? new Date(v).toISOString() : '';
       saveConfig('已更新 ✓');
     };
-    $('#rToggle').onclick = () => { config.round.open = !config.round.open; saveConfig(config.round.open?'已重新開放':'已結單'); };
-  } else {
-    $('#roundCard').innerHTML = `<h2>目前沒有開團</h2><div class="muted">在下面選一間店，按「開團」。</div>`;
-  }
+    box.querySelector('[data-act=toggle]').onclick = () => { r.open = !r.open; saveConfig(r.open?'已重新開放':'已結單'); };
+    box.querySelector('[data-act=end]').onclick = async () => {
+      const n = allOrders.filter(o=>o.roundId===r.id).length;
+      if(!confirm(`結束「${roundLabel(r)}」這團？${n?`\n這團的 ${n} 筆訂單會從統計頁移除（試算表裡還留著）。`:''}`)) return;
+      config.rounds = rs.filter(x=>x.id!==r.id);
+      if(await saveConfig('已結束這團') && !remote) localPost('clearRound', {roundId:r.id});
+    };
+  });
 
   // 店家卡片
   $('#storeList').innerHTML = config.stores.length ? config.stores.map(s => {
-    const active = s.id===r.storeId && r.id;
+    const active = rs.some(r=>r.storeId===s.id);
     return `<div class="store ${active?'active':''}">
       <div class="thumb" data-edit="${s.id}">${s.photos?.length ? imgTag(s.photos[0]) : `<div class="nophoto">📷<br>還沒有照片</div>`}
         ${s.photos?.length>1?`<span class="cnt">${s.photos.length} 張</span>`:''}</div>
@@ -752,11 +849,10 @@ function renderAdmin(){
 
 async function openRound(storeId){
   const s = config.stores.find(x=>x.id===storeId);
-  if(orders.length && config.round.open && !confirm(`目前這團還有 ${orders.length} 筆訂單，改開「${s.name}」後就看不到了。確定？`)) return;
-  if(!orders.length && !confirm(`開團「${s.name}」？`)) return;
+  if(!confirm(`開團「${s.name}」？`)) return;
   const id = uid('r');
-  config.round = {id, storeId, title:'', deadline:'', open:true};
-  if(await saveConfig(`已開團：${s.name} ✓`) && !remote) localPost('clearOld', {keepRoundId:id});
+  config.rounds.push({id, storeId, title:'', deadline:'', open:true});
+  if(await saveConfig(`已開團：${s.name} ✓`)){ selectRound(id); renderAll(); }
 }
 
 $('#btnAddStore').onclick = () => openStoreSheet(null);
@@ -874,7 +970,7 @@ function openStoreSheet(id){
     drawItems();
     $('#sCancel').onclick = closeSheet;
     if($('#sDel')) $('#sDel').onclick = async () => {
-      if(d.id===config.round.storeId && config.round.id){ toast('這間正在開團，請先開別間或結單'); return; }
+      if(config.rounds.some(r=>r.storeId===d.id)){ toast('這間正在開團，請先「結束這團」'); return; }
       if(!confirm(`刪除「${d.name}」？`)) return;
       config.stores = config.stores.filter(s=>s.id!==d.id);
       closeSheet(); saveConfig('已刪除');
